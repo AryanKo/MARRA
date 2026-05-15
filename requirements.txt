@@ -1,0 +1,5 @@
+pytest
+pydantic
+qdrant-client
+ollama
+langchain-text-splitters
