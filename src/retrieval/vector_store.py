@@ -2,9 +2,15 @@ import uuid
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from src.models.schema import DocumentChunk
+from src.utils.observability import trace_span as span
 
 class VectorStore:
-    def __init__(self, host: str = "localhost", port: int = 6333, collection_name: str = "marra_documents"):
+    def __init__(self, host: str = None, port: int = None, collection_name: str = "marra_documents"):
+        import os
+        if host is None:
+            host = os.environ.get("QDRANT_HOST", "localhost")
+        if port is None:
+            port = int(os.environ.get("QDRANT_PORT", "6333"))
         self.client = QdrantClient(host=host, port=port)
         self.collection_name = collection_name
         self._ensure_collection_exists()
@@ -42,3 +48,12 @@ class VectorStore:
                 collection_name=self.collection_name,
                 points=points
             )
+
+    @span(name="qdrant_dense_search")
+    def dense_search(self, query_vector: list[float], k: int = 3):
+        search_result = self.client.query_points(
+            collection_name=self.collection_name,
+            query=query_vector,
+            limit=k
+        ).points
+        return search_result

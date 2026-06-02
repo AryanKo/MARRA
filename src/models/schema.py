@@ -9,6 +9,7 @@ class DocumentChunk(BaseModel):
 
 class AgentState(TypedDict):
     query: str
+    history: List[Dict[str, str]]
     sub_queries: Annotated[List[str], operator.add]
     retrieved_docs: Annotated[List[DocumentChunk], operator.add]
     final_answer: str

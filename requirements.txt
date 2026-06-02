@@ -3,3 +3,13 @@ pydantic
 qdrant-client
 ollama
 langchain-text-splitters
+rank-bm25
+langgraph
+fastapi
+uvicorn
+streamlit
+requests
+arize-phoenix
+openinference-instrumentation-langchain
+openinference-instrumentation-fastapi
+openinference-instrumentation-httpx

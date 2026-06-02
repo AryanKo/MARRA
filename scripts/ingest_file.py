@@ -6,6 +6,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.ingestion.chunker import load_and_chunk_file
 from src.ingestion.embedder import embed_texts
+from src.ingestion.bm25_indexer import BM25Indexer
 from src.retrieval.vector_store import VectorStore
 from src.models.schema import DocumentChunk
 
@@ -43,9 +44,13 @@ def main():
         store = VectorStore(collection_name="marra_documents")
         store.upsert_chunks(document_chunks)
         print("Ingestion complete! Successfully added points to Qdrant.")
+        
+        print("Building and saving BM25 index...")
+        bm25_indexer = BM25Indexer()
+        bm25_indexer.build_and_save_index(document_chunks)
     except Exception as e:
         import logging
-        logging.error(f"Failed to upsert to Qdrant: {e}")
+        logging.error(f"Failed to upsert to Qdrant or build BM25: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
