@@ -12,4 +12,3 @@ requests
 arize-phoenix
 openinference-instrumentation-langchain
 opentelemetry-instrumentation-fastapi
-openinference-instrumentation-httpx
