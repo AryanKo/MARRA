@@ -27,7 +27,7 @@ def setup_observability(app=None):
         
         # Instrument FastAPI
         if app:
-            FastAPIInstrumentor.instrument_app(app)
+            FastAPIInstrumentor().instrument(app=app)
             
         logger.info("Observability enabled: Sending OTLP traces to Phoenix at http://127.0.0.1:4318/v1/traces")
     except Exception as e:
