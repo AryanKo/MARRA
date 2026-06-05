@@ -22,7 +22,6 @@ class BM25Indexer:
             "chunks": document_chunks
         }
         
-        # Ensure directory exists
         os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
         
         with open(self.index_path, "wb") as f:

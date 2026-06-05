@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 from typing import List, Dict, Any
 
-# Configure Page
+# Config
 st.set_page_config(
     page_title="MARRA Retrieval Agent",
     page_icon="🧠",

@@ -6,7 +6,5 @@ env/
 .env
 .idea/
 .vscode/
-
-# Internal project documentation (do not push)
-agent-execution-rules.md
-PROJECT-BLUEPRINT.MD
+project-rules.md
+project-blueprint.md

@@ -55,7 +55,7 @@ jobs:
         
     - name: Run Pytest
       env:
-        # For future generation tests we will use a small model
+        # For future generation tests, use a small model
         LLM_MODEL: tinydolphin
         # Limit LangGraph recursion to prevent infinite loops during testing
         MAX_LANGGRAPH_RECURSION: 3
