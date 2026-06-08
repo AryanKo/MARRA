@@ -29,7 +29,7 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - OLLAMA_HOST=http://host.docker.internal:11434
-      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4318/v1/traces
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
     depends_on:
       - qdrant
       - phoenix

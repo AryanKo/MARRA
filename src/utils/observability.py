@@ -13,7 +13,7 @@ def setup_observability(app=None):
     try:
         # Configure OpenTelemetry to send traces to the Phoenix Docker container
         import os
-        endpoint = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT", "http://127.0.0.1:4318/v1/traces")
+        endpoint = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT", "http://127.0.0.1:6006/v1/traces")
         tracer_provider = TracerProvider()
         
         # Use SimpleSpanProcessor for dev/local environments to immediately flush spans
@@ -29,7 +29,7 @@ def setup_observability(app=None):
         if app:
             FastAPIInstrumentor().instrument(app=app)
             
-        logger.info("Observability enabled: Sending OTLP traces to Phoenix at http://127.0.0.1:4318/v1/traces")
+        logger.info("Observability enabled: Sending OTLP traces to Phoenix at %s", endpoint)
     except Exception as e:
         logger.error(f"Failed to setup observability: {e}")
 
