@@ -112,8 +112,10 @@ async def ingest_endpoint(file: UploadFile = File(...), overwrite: bool = Form(F
                     logger.error(f"Failed to delete BM25 index file: {e}")
         
         # 2. Save file temporarily
-        os.makedirs("data", exist_ok=True)
-        file_path = os.path.join("data", filename)
+        import uuid
+        temp_dir = "/tmp"
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}_{filename}")
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
