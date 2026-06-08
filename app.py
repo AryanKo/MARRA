@@ -106,6 +106,28 @@ with st.sidebar:
         st.error("🔴 API Gateway: Offline")
         
     st.markdown("---")
+    st.markdown("### Document Ingestion")
+    uploaded_file = st.file_uploader("Upload plain text file", type=["txt", "md"])
+    ingest_mode = st.radio("Ingestion Mode", ["Append", "Overwrite"], index=0)
+    
+    if st.button("🚀 Ingest Document", use_container_width=True):
+        if uploaded_file is not None:
+            overwrite_val = (ingest_mode == "Overwrite")
+            with st.spinner("Ingesting document..."):
+                try:
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type or "text/plain")}
+                    data = {"overwrite": str(overwrite_val).lower()}
+                    response = requests.post(f"{API_URL}/ingest", files=files, data=data, timeout=120.0)
+                    if response.status_code == 200:
+                        st.success(response.json().get("message", "Success!"))
+                    else:
+                        st.error(f"Error ({response.status_code}): {response.text}")
+                except Exception as e:
+                    st.error(f"Failed to connect to server: {e}")
+        else:
+            st.warning("Please choose a file first.")
+
+    st.markdown("---")
     if st.button("🧹 Clear Chat History", use_container_width=True):
         st.session_state.messages = []
         st.rerun()

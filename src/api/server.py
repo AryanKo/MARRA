@@ -1,10 +1,20 @@
 import logging
-from fastapi import FastAPI, HTTPException, status
+import os
+import shutil
+from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 import httpx
 from qdrant_client.http.exceptions import ResponseHandlingException
 import anyio
+
+from src.ingestion.chunker import load_and_chunk_file
+from src.ingestion.embedder import embed_texts
+from src.ingestion.bm25_indexer import BM25Indexer
+from src.retrieval.vector_store import VectorStore
+from src.models.schema import DocumentChunk
+from src.retrieval.bm25_retriever import BM25Retriever
+
 
 # Import the compiled LangGraph build function
 from src.agents.graph import build_graph
@@ -77,6 +87,98 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal Server Error: {str(e)}"
+        )
+
+@app.post("/ingest", status_code=status.HTTP_200_OK)
+async def ingest_endpoint(file: UploadFile = File(...), overwrite: bool = Form(False)):
+    try:
+        filename = file.filename
+        logger.info(f"Received ingestion request for file: {filename}, overwrite={overwrite}")
+        
+        # 1. Handle overwrite
+        if overwrite:
+            logger.info("Overwrite is True. Clearing Vector Collection and deleting BM25 index.")
+            # Wipe Qdrant
+            store = VectorStore(collection_name="marra_documents")
+            store.clear_collection()
+            
+            # Delete BM25 index pkl
+            bm25_path = "data/bm25_index.pkl"
+            if os.path.exists(bm25_path):
+                try:
+                    os.remove(bm25_path)
+                    logger.info(f"Successfully deleted BM25 index at {bm25_path}")
+                except Exception as e:
+                    logger.error(f"Failed to delete BM25 index file: {e}")
+        
+        # 2. Save file temporarily
+        os.makedirs("data", exist_ok=True)
+        file_path = os.path.join("data", filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        logger.info(f"Saved uploaded file to {file_path}")
+        
+        # 3. Chunk the file
+        logger.info(f"Chunking file: {file_path}")
+        texts = load_and_chunk_file(file_path, chunk_size=500, chunk_overlap=50)
+        logger.info(f"Generated {len(texts)} chunks from {filename}")
+        
+        if not texts:
+            return {"status": "success", "message": f"File {filename} was empty. No chunks generated."}
+            
+        # 4. Embed chunks
+        logger.info(f"Generating embeddings for {len(texts)} chunks...")
+        # Since embed_texts runs queries to local Ollama instance, it might block the event loop.
+        # Run it in a separate thread to keep FastAPI event loop responsive.
+        vectors = await anyio.to_thread.run_sync(embed_texts, texts)
+        
+        # 5. Prepare DocumentChunk objects
+        document_chunks = []
+        for i, (text, vector) in enumerate(zip(texts, vectors)):
+            document_chunks.append(
+                DocumentChunk(
+                    text=text,
+                    dense_vector=vector,
+                    metadata={
+                        "source": filename,
+                        "file_name": filename,
+                        "chunk_id": i
+                    }
+                )
+            )
+            
+        # 6. Upsert to Qdrant
+        logger.info("Upserting chunks to Qdrant...")
+        store = VectorStore(collection_name="marra_documents")
+        await anyio.to_thread.run_sync(store.upsert_chunks, document_chunks)
+        
+        # 7. Build and save BM25 index
+        logger.info(f"Updating BM25 index (append={not overwrite})...")
+        bm25_indexer = BM25Indexer()
+        await anyio.to_thread.run_sync(bm25_indexer.build_and_save_index, document_chunks, not overwrite)
+        
+        # 8. Reload BM25 Retriever
+        logger.info("Reloading BM25 Retriever in-memory index...")
+        BM25Retriever().reload()
+        
+        # Clean up temp file
+        try:
+            os.remove(file_path)
+            logger.info(f"Cleaned up temp file {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete temp file {file_path}: {e}")
+            
+        return {
+            "status": "success",
+            "message": f"Successfully ingested {len(document_chunks)} chunks from {filename}."
+        }
+        
+    except Exception as e:
+        logger.error(f"Ingestion failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ingestion failed: {str(e)}"
         )
 
 if __name__ == "__main__":

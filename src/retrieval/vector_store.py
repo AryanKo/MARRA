@@ -28,6 +28,13 @@ class VectorStore:
                 )
             )
 
+    def clear_collection(self, vector_size: int = 768):
+        try:
+            self.client.delete_collection(collection_name=self.collection_name)
+        except Exception:
+            pass
+        self._ensure_collection_exists(vector_size=vector_size)
+
     def upsert_chunks(self, chunks: list[DocumentChunk]):
         points = []
         for chunk in chunks:

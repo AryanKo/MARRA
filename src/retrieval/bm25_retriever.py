@@ -28,6 +28,9 @@ class BM25Retriever:
         except Exception as e:
             logging.error(f"Error loading BM25 index: {e}")
             
+    def reload(self):
+        self._load_index()
+            
     @span(name="bm25_sparse_search")
     def search(self, query: str, k: int = 3):
         if not self.bm25_model or not self.chunks:
