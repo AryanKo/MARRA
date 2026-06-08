@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -12,7 +10,7 @@ services:
     restart: unless-stopped
 
   phoenix:
-    image: arizeai/phoenix:latest
+    image: arizephoenix/phoenix:latest
     container_name: marra-phoenix
     ports:
       - "6006:6006"
