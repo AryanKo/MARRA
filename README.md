@@ -10,15 +10,16 @@ MARRA (Multi-Agent Retrieval Reasoning Assistant) is a production-grade, local-f
 
 The system is split into decoupled layers to ensure strict separation of concerns, scalability, and optimal hardware utilization:
 
-1. **Streamlit UI Layer**: A clean, modern interface presenting interactive agent workflows and grounded source visualizations.
-2. **FastAPI API Gateway**: Decoupled backend serving agent invocation endpoints over thread-safe pipelines.
+1. **Streamlit UI Layer**: A clean, modern interface presenting interactive agent workflows, multimodal ingestion controls (in the sidebar), and grounded source visualizations.
+2. **FastAPI API Gateway**: Decoupled backend serving agent invocation and ingestion endpoints over thread-safe pipelines.
 3. **LangGraph State Machine**: Orchestrates search planning, retrieval, and response synthesis inside a deterministic, stateful graph.
 4. **Hybrid Retrieval Engine**:
    - **Dense Search**: Semantic vector retrieval matching queries against embeddings stored in Qdrant.
    - **Sparse Search**: Keyword-based search matching queries using a BM25 index.
    - **Reciprocal Rank Fusion (RRF)**: Merges dense and sparse retrieval ranks dynamically.
 5. **Observability & Tracing (Arize Phoenix)**: OTLP tracing collector capturing span-level latency, execution logs, and detailed sub-query breakdowns.
-6. **Ollama LLM Engine**: Runs natively on the host to leverage metal/GPU acceleration (Metal on macOS, CUDA on Windows/Linux).
+6. **Ollama LLM Engine**: Runs locally to host the local planner node (`llama3.1:8b`) with GPU/CPU acceleration.
+7. **Google Gemini Cloud**: Handles cloud-native Matryoshka embeddings (`gemini-embedding-2`) and multimodal response synthesis (`gemini-3.5-flash`), processing text context, multi-turn history, and raw media bytes (images, audio, video).
 
 ### System Topology (ASCII)
 
@@ -30,11 +31,12 @@ The system is split into decoupled layers to ensure strict separation of concern
 |  |     Streamlit Container   |             |           Ollama Service          |  |
 |  |                           |             |        (Metal/CUDA Native)        |  |
 |  |     +---------------+     |             |        +-----------------+        |  |
-|  |     |  app.py (UI)  |     |             |        |  nomic-embed    |        |  |
-|  |     +-------+-------+     |             |        +-----------------+        |  |
-|  |             |             |             |        |  llama3.1:8b    |        |  |
-|  +-------------|-------------+             |        +--------^--------+        |  |
-|     (Browser)  | API Request               +-----------------|-----------------+  |
+|  |     |  app.py (UI)  |     |             |        |  llama3.1:8b    |        |  |
+|  |     +-------+-------+     |             |        +--------^--------+        |  |
+|  |             |             |             +-----------------|-----------------+  |
+|  |             |             |                               |                    |
+|  +-------------|-------------+                               |                    |
+|     (Browser)  | API Request                                 |                    |
 |     Port 8501  | Port 8000                                   |                    |
 |                v                                             | OLLAMA_HOST        |
 |  +---------------------------+                               | (host.docker.internal)
@@ -48,15 +50,19 @@ The system is split into decoupled layers to ensure strict separation of concern
 |  |             v             |                               |                    |
 |  |    +-----------------+    |                               |                    |
 |  |    |    LangGraph    |----+-------------------------------+                    |
-|  |    |  State Machine  |    |   LLM & Embeddings Query                           |
+|  |    |  State Machine  |    |   Local LLM Query (Planning)                       |
 |  |    +--------+--------+    |                                                    |
 |  |             |             |                                                    |
-|  |             +-------------+--------+                                           |
-|  |             | Retrieves Context    | Traces Span Metrics                       |
-|  |             v                      v                                           |
-|  +-------------|----------------------|-------------------------------------------+
-|                |                      |
-|                | Port 6333            | Port 4318 (OTLP HTTP)
+|  |             |             |             +-----------------------------------+  |
+|  |             |             |             |        Google Gemini Cloud        |  |
+|  |             |             |             |                                   |  |
+|  |             |             |             |     - gemini-embedding-2          |  |
+|  |             +-------------+------------>|     - gemini-3.5-flash            |  |
+|  |             | Cloud Multimodal Synthesis|                                   |  |
+|  |             v                           +-----------------------------------+  |
+|  +-------------|------------------------------------------------------------------+
+|                |                      
+|                | Port 6333            Port 4318 (OTLP HTTP)
 |                v                      v
 |  +---------------------------+  +---------------------------+
 |  |     Qdrant Container      |  |     Phoenix Container     |
@@ -75,11 +81,11 @@ The system is split into decoupled layers to ensure strict separation of concern
 - **API Gateway**: FastAPI + Uvicorn (Lifespan resource management, thread execution pooling)
 - **Frontend**: Streamlit (Reactive component architecture with dark/light mode compatibility)
 - **Vector Database**: Qdrant (Dense vector store, Dockerized)
-- **Sparse Search**: Rank-BM25 (Keyword-based token score matching, persisted to `data/bm25_index.pkl`)
+- **Sparse Search**: Rank-BM25 (Keyword-based token score matching, persisted locally)
 - **Local LLM**: Ollama (`llama3.1:8b` — query planning, runs on host GPU/CPU)
 - **Cloud AI**: Google Gemini (`gemini-embedding-2` for 768-dim Matryoshka embeddings, `gemini-3.5-flash` for multimodal synthesis)
 - **Observability**: Arize Phoenix + OpenTelemetry (OTLP exporters)
-- **DevOps**: Docker Compose, Makefile, GitHub Actions CI
+- **DevOps**: Docker Compose, Windows run.bat script, GitHub Actions CI
 
 ---
 
@@ -150,49 +156,47 @@ ollama pull llama3.1:8b
 
 ---
 
-### 2. Quickstart with Makefile
+### 2. Quickstart with run.bat
 
-We leverage a `Makefile` to simplify deployment orchestration. Run these commands from the project root:
+We leverage a Windows-native batch macro script `run.bat` to manage the lifecycle of the system. Simply run `run.bat` in your Windows terminal to build, launch, and stream logs simultaneously:
 
-#### Spin Up Services
-Build containers and start them in detached mode:
-```bash
-make up
+```cmd
+run.bat
 ```
-This spins up four services:
+
+This automated script performs the following operations:
+1. Shuts down any pre-existing containers to avoid port collisions.
+2. Builds the container images cleanly.
+3. Launches the services in detached mode.
+4. Automatically streams container logs directly to your terminal.
+
+Once running, the following services are available:
 - **Streamlit UI** on [http://localhost:8501](http://localhost:8501)
 - **FastAPI API Gateway** on [http://localhost:8000](http://localhost:8000)
 - **Qdrant Vector DB** dashboard on [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
 - **Arize Phoenix Observability** dashboard on [http://localhost:6006](http://localhost:6006)
 
-#### Tail Service Logs
-Observe output across all running containers:
+To stop the services, run:
 ```bash
-make logs
-```
-
-#### Shut Down Services
-Stop and tear down the running containers:
-```bash
-make down
+docker compose down
 ```
 
 ---
 
 ### 3. Ingestion Pipeline
 
-To populate the vector database, you can run the local ingestion script to chunk, embed, and index documents.
+Ingestion is fully integrated into the Streamlit user interface sidebar. You do not need to run separate command-line scripts to ingest content.
 
-If you want to run it on your host machine, install requirements locally:
-```bash
-pip install -r requirements.txt
-```
-
-Then run the ingestion script with your target file:
-```bash
-python scripts/ingest_file.py data/sample.txt
-```
-This will chunk the text, query Ollama for embeddings, insert dense vectors into Qdrant, and compile/serialize the BM25 sparse index into `data/bm25_index.pkl` (which is shared with the API container via Docker volume mounts).
+#### How to Ingest Documents:
+1. Open the Streamlit UI at [http://localhost:8501](http://localhost:8501).
+2. Expand the sidebar panel.
+3. Upload files using the secure drag-and-drop area. The ingestion pipeline natively supports:
+   - **Text & Markdown documents**: `.txt`, `.md`
+   - **Multimodal files**: Images (`.png`, `.jpg`, `.jpeg`, `.webp`), audio (`.mp3`, `.wav`), and video (`.mp4`)
+4. Choose the ingestion mode:
+   - **Append**: Adds the new document vectors and indices to the existing database.
+   - **Overwrite**: Purges existing vector collections and local sparse indices before indexing the new files.
+5. Click **🚀 Ingest Document** to start the pipeline. The file will be processed, chunked, embedded via `gemini-embedding-2`, and indexed into both Qdrant (dense vectors) and the local BM25 engine.
 
 ---
 
