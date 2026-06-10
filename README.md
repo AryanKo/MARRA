@@ -1,5 +1,7 @@
 # 🧠 MARRA: Hybrid Multi-Agent RAG Platform
 
+![Version](https://img.shields.io/badge/version-v1.0.0-blue) ![Python](https://img.shields.io/badge/python-3.11-green) ![License](https://img.shields.io/badge/license-MIT-green)
+
 MARRA (Multi-Agent Retrieval Reasoning Assistant) is a production-grade, local-first RAG platform designed to deliver secure, private, and deterministic document intelligence. It features a decoupled microservices architecture, a deterministic agent state machine orchestrated with LangGraph, hybrid search (dense vector + sparse BM25) utilizing Reciprocal Rank Fusion (RRF), and comprehensive OTLP-compliant observability.
 
 ---
@@ -72,15 +74,33 @@ The system is split into decoupled layers to ensure strict separation of concern
 - **Orchestration**: LangGraph (Deterministic state routing)
 - **API Gateway**: FastAPI + Uvicorn (Lifespan resource management, thread execution pooling)
 - **Frontend**: Streamlit (Reactive component architecture with dark/light mode compatibility)
-- **Vector Database**: Qdrant (Dense vector store)
-- **Sparse Search**: Rank-BM25 (Keyword-based token score matching)
-- **Local Models**: Ollama (`llama3.1:8b` for generation, `nomic-embed-text` for embeddings)
+- **Vector Database**: Qdrant (Dense vector store, Dockerized)
+- **Sparse Search**: Rank-BM25 (Keyword-based token score matching, persisted to `data/bm25_index.pkl`)
+- **Local LLM**: Ollama (`llama3.1:8b` — query planning, runs on host GPU/CPU)
+- **Cloud AI**: Google Gemini (`gemini-embedding-2` for 768-dim Matryoshka embeddings, `gemini-3.5-flash` for multimodal synthesis)
 - **Observability**: Arize Phoenix + OpenTelemetry (OTLP exporters)
-- **Orchestration / Devops**: Docker Compose, Makefile, GitHub Actions CI
+- **DevOps**: Docker Compose, Makefile, GitHub Actions CI
 
 ---
 
 ## 🚀 Getting Started
+
+### 0. Configure Your Environment (Required)
+
+MARRA requires a Google Gemini API key for embeddings and response synthesis.
+
+```bash
+# 1. Copy the example environment file
+cp .env.example .env
+
+# 2. Open .env and replace the placeholder with your real key
+# Get a key at: https://aistudio.google.com/app/apikey
+# GEMINI_API_KEY=your_actual_key_here
+```
+
+> ⚠️ **Never commit your `.env` file.** It is already listed in `.gitignore`.
+
+---
 
 ### 1. Prerequisites & Host Configurations
 
@@ -120,11 +140,13 @@ By default, Ollama binds to `127.0.0.1`, which prevents the API container from r
      ```
 
 #### Pull Required Models
-Make sure you have downloaded the necessary models to your host Ollama instance:
+Make sure you have downloaded the necessary Ollama model to your host:
 ```bash
+# The planner LLM — runs entirely locally
 ollama pull llama3.1:8b
-ollama pull nomic-embed-text
 ```
+
+> **Note:** Embeddings are generated via Google Gemini's `gemini-embedding-2` API (cloud). No Ollama embedding model is required.
 
 ---
 

@@ -1,6 +1,7 @@
 import pickle
 import os
 import logging
+import threading
 from src.utils.observability import trace_span as span
 
 class BM25Retriever:
@@ -12,6 +13,7 @@ class BM25Retriever:
             cls._instance.index_path = index_path
             cls._instance.bm25_model = None
             cls._instance.chunks = []
+            cls._instance._lock = threading.Lock()
             cls._instance._load_index()
         return cls._instance
 
@@ -29,15 +31,28 @@ class BM25Retriever:
             logging.error(f"Error loading BM25 index: {e}")
             
     def reload(self):
-        self._load_index()
+        """Thread-safe reload: load into temporaries, then swap under lock."""
+        if not os.path.exists(self.index_path):
+            return
+        try:
+            with open(self.index_path, "rb") as f:
+                data = pickle.load(f)
+            with self._lock:
+                self.bm25_model = data.get("bm25_model")
+                self.chunks = data.get("chunks", [])
+        except Exception as e:
+            logging.error(f"Error reloading BM25 index: {e}")
             
     @span(name="bm25_sparse_search")
     def search(self, query: str, k: int = 3):
-        if not self.bm25_model or not self.chunks:
+        with self._lock:
+            model = self.bm25_model
+            chunks = self.chunks
+        if not model or not chunks:
             return []
             
         tokenized_query = query.lower().split(" ")
-        scores = self.bm25_model.get_scores(tokenized_query)
+        scores = model.get_scores(tokenized_query)
         
         # Get top k indices
         top_k_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
@@ -46,5 +61,5 @@ class BM25Retriever:
         for i in top_k_indices:
             score = scores[i]
             if score > 0:
-                results.append((self.chunks[i], score))
+                results.append((chunks[i], score))
         return results

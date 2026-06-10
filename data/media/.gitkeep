@@ -1,0 +1,5 @@
+# This file ensures the data/media/ directory exists in the repository
+# while keeping all media content (user-uploaded files) untracked.
+#
+# The .gitignore at the project root excludes data/media/* from version control.
+# This is intentional — media files are runtime artifacts and may be large.

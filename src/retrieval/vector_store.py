@@ -5,7 +5,7 @@ from src.models.schema import DocumentChunk
 from src.utils.observability import trace_span as span
 
 class VectorStore:
-    def __init__(self, host: str = None, port: int = None, collection_name: str = "marra_documents"):
+    def __init__(self, host: str = None, port: int = None, collection_name: str = "marra_multimodal_768"):
         import os
         if host is None:
             host = os.environ.get("QDRANT_HOST", "localhost")

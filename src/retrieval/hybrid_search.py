@@ -1,6 +1,7 @@
 from src.retrieval.vector_store import VectorStore
 from src.retrieval.bm25_retriever import BM25Retriever
-from src.ingestion.embedder import embed_texts
+from src.retrieval.gemini_embedder import embed_chunk
+from src.models.schema import DocumentChunk
 
 def reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60):
     """
@@ -50,18 +51,29 @@ def reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60):
         
     return fused_results
 
-def hybrid_search(query: str, k: int = 3):
-    # 1. Embed query
-    query_vector = embed_texts([query])[0]
+def hybrid_search(query: str, query_media_path: str = None, k: int = 3):
+    is_multimodal_query = query_media_path is not None or query.strip() in ["[IMAGE MEDIA PAYLOAD]", "[AUDIO MEDIA PAYLOAD]", "[VIDEO MEDIA PAYLOAD]"]
     
+    # 1. Embed query
+    if query_media_path:
+        chunk = DocumentChunk(text="[IMAGE MEDIA PAYLOAD]", metadata={"file_path": query_media_path, "media_type": "image"})
+        query_vector = embed_chunk(chunk)
+    else:
+        query_vector = embed_chunk(DocumentChunk(text=query))
+        
     # 2. Dense search
-    vector_store = VectorStore(collection_name="marra_documents")
+    vector_store = VectorStore(collection_name="marra_multimodal_768")
     dense_results = vector_store.dense_search(query_vector, k=k)
     
     # 3. Sparse search
-    bm25_retriever = BM25Retriever()
-    sparse_results = bm25_retriever.search(query, k=k)
-    
+    if is_multimodal_query:
+        sparse_results = []
+    else:
+        bm25_retriever = BM25Retriever()
+        sparse_results = bm25_retriever.search(query, k=k)
+        # Filter out media chunks from sparse results
+        sparse_results = [(c, s) for c, s in sparse_results if c.metadata.get("media_type", "text") == "text"]
+        
     # 4. Reciprocal Rank Fusion
     fused_results = reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60)
     

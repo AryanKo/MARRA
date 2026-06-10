@@ -1,7 +1,11 @@
 import pickle
 import os
+import tempfile
+import logging
 from rank_bm25 import BM25Okapi
 from src.models.schema import DocumentChunk
+
+logger = logging.getLogger(__name__)
 
 class BM25Indexer:
     def __init__(self, index_path: str = "data/bm25_index.pkl"):
@@ -18,11 +22,18 @@ class BM25Indexer:
                 with open(self.index_path, "rb") as f:
                     data = pickle.load(f)
                     existing_chunks = data.get("chunks", [])
-                    print(f"Loaded {len(existing_chunks)} existing chunks from {self.index_path}")
+                    logger.info(f"Loaded {len(existing_chunks)} existing chunks from {self.index_path}")
             except Exception as e:
-                print(f"Error loading existing BM25 index from {self.index_path}: {e}")
+                logger.error(f"Error loading existing BM25 index from {self.index_path}: {e}")
                 
         combined_chunks = existing_chunks + document_chunks
+
+        if len(combined_chunks) == 0:
+            os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
+            with open(self.index_path, "wb") as f:
+                pickle.dump({"bm25_model": None, "chunks": []}, f)
+            logger.info(f"BM25 index saved to {self.index_path} with 0 total chunks (Empty)")
+            return
 
         # Simple whitespace tokenizer for demonstration
         tokenized_corpus = [chunk.text.lower().split(" ") for chunk in combined_chunks]
@@ -36,7 +47,16 @@ class BM25Indexer:
         
         os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
         
-        with open(self.index_path, "wb") as f:
-            pickle.dump(data_to_save, f)
+        # Atomic write: write to a temp file, then os.replace() to the target path
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="wb", dir=os.path.dirname(self.index_path), delete=False, suffix=".tmp") as tmp_f:
+                tmp_path = tmp_f.name
+                pickle.dump(data_to_save, tmp_f)
+            os.replace(tmp_path, self.index_path)
+        except Exception:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
         
-        print(f"BM25 index saved to {self.index_path} with {len(combined_chunks)} total chunks")
+        logger.info(f"BM25 index saved to {self.index_path} with {len(combined_chunks)} total chunks")

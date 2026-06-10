@@ -107,7 +107,7 @@ with st.sidebar:
         
     st.markdown("---")
     st.markdown("### Document Ingestion")
-    uploaded_file = st.file_uploader("Upload plain text file", type=["txt", "md"])
+    uploaded_file = st.file_uploader("Upload Document or Media File", type=["txt", "md", "png", "jpg", "jpeg", "webp", "mp3", "wav", "mp4"])
     ingest_mode = st.radio("Ingestion Mode", ["Append", "Overwrite"], index=0)
     
     if st.button("🚀 Ingest Document", use_container_width=True):
@@ -164,6 +164,11 @@ for msg in st.session_state.messages:
 
 # Main Chat Input
 if user_query := st.chat_input("Ask MARRA a question..."):
+    # Guard: reject empty/whitespace queries
+    if not user_query.strip():
+        st.warning("⚠️ Please enter a question before submitting.")
+        st.stop()
+    
     # 1. Render user message
     with st.chat_message("user"):
         st.markdown(user_query)

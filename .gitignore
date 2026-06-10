@@ -1,10 +1,62 @@
+# ============================================================
+# MARRA V1 — .gitignore
+# ============================================================
+
+# --- Python ---
 __pycache__/
-*.pyc
-.pytest_cache/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# --- Virtual Environments ---
 venv/
 env/
+.venv/
+.env/
+
+# --- Environment & Secrets (NEVER commit) ---
 .env
+*.env.local
+
+# --- IDE & Editor ---
 .idea/
 .vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Testing & Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# --- Runtime Data & Artifacts (NEVER commit) ---
+# Binary BM25 index — regenerated at runtime via /ingest
+data/bm25_index.pkl
+data/*.pkl
+data/*.tmp
+
+# Persistent media uploads — user data, potentially large
+data/media/*
+!data/media/.gitkeep
+
+# Temp files from atomic writes
+*.tmp
+
+# --- Docker ---
+# Compose override files for local dev
+docker-compose.override.yml
+
+# --- Project Internal Docs ---
 project-rules.md
 project-blueprint.md
+project-blueprint.MD
