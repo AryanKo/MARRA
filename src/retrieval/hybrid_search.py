@@ -3,6 +3,18 @@ from src.retrieval.bm25_retriever import BM25Retriever
 from src.retrieval.gemini_embedder import embed_chunk
 from src.models.schema import DocumentChunk
 
+def _derive_chunk_id(text, metadata):
+    """
+    Derives a unique chunk identity key.
+    For media chunks, uses file_path so distinct media files are never
+    collapsed even if their placeholder text is identical.
+    For text chunks, uses the text content itself for natural deduplication.
+    """
+    file_path = metadata.get("file_path") if metadata else None
+    if file_path:
+        return file_path
+    return text
+
 def reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60):
     """
     Fuses dense and sparse results using RRF.
@@ -15,7 +27,7 @@ def reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60):
     # Process dense results
     for rank, point in enumerate(dense_results):
         text = point.payload.get("text")
-        chunk_id = text # Use text as unique ID for fusion logic
+        chunk_id = _derive_chunk_id(text, point.payload)
         
         chunk_map[chunk_id] = {
             "text": text,
@@ -27,7 +39,7 @@ def reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60):
         
     # Process sparse results
     for rank, (chunk, score) in enumerate(sparse_results):
-        chunk_id = chunk.text
+        chunk_id = _derive_chunk_id(chunk.text, chunk.metadata)
         if chunk_id not in chunk_map:
             chunk_map[chunk_id] = {
                 "text": chunk.text,

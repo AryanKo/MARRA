@@ -10,7 +10,7 @@ def chunk_multimodal_file(file_path: str) -> List[DocumentChunk]:
     
     if ext in [".jpg", ".jpeg", ".png", ".webp"]:
         chunks.append(DocumentChunk(
-            text="[IMAGE MEDIA PAYLOAD]",
+            text=f"[IMAGE MEDIA PAYLOAD: {os.path.basename(file_path)}]",
             metadata={
                 "file_path": file_path,
                 "media_type": "image",
@@ -54,7 +54,7 @@ def chunk_multimodal_file(file_path: str) -> List[DocumentChunk]:
                 start_ts = i * 30.0
                 end_ts = min((i + 1) * 30.0, duration)
                 chunks.append(DocumentChunk(
-                    text=f"[{media_type.upper()} MEDIA PAYLOAD]",
+                    text=f"[{media_type.upper()} MEDIA PAYLOAD: {os.path.basename(file_path)} segment {i}]",
                     metadata={
                         "file_path": seg_path,
                         "media_type": media_type,
