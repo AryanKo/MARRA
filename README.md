@@ -1,6 +1,6 @@
 # 🧠 MARRA: Hybrid Multi-Agent RAG Platform
 
-![Version](https://img.shields.io/badge/version-v1.0.0-blue) ![Python](https://img.shields.io/badge/python-3.11-green) ![License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-v1.1.0-blue) ![Python](https://img.shields.io/badge/python-3.11-green) ![License](https://img.shields.io/badge/license-MIT-green)
 
 MARRA (Multi-Agent Retrieval Reasoning Assistant) is a production-grade, local-first RAG platform designed to deliver secure, private, and deterministic document intelligence. It features a decoupled microservices architecture, a deterministic agent state machine orchestrated with LangGraph, hybrid search (dense vector + sparse BM25) utilizing Reciprocal Rank Fusion (RRF), and comprehensive OTLP-compliant observability.
 
@@ -19,7 +19,7 @@ The system is split into decoupled layers to ensure strict separation of concern
    - **Reciprocal Rank Fusion (RRF)**: Merges dense and sparse retrieval ranks dynamically.
 5. **Observability & Tracing (Arize Phoenix)**: OTLP tracing collector capturing span-level latency, execution logs, and detailed sub-query breakdowns.
 6. **Ollama LLM Engine**: Runs locally to host the local planner node (`llama3.1:8b`) with GPU/CPU acceleration.
-7. **Google Gemini Cloud**: Handles cloud-native Matryoshka embeddings (`gemini-embedding-2`) and multimodal response synthesis (`gemini-3.5-flash`), processing text context, multi-turn history, and raw media bytes (images, audio, video).
+7. **Google Gemini Cloud**: Handles cloud-native Matryoshka embeddings (`gemini-embedding-2`) and multimodal response synthesis (`gemini-3.5-flash`), processing text context, multi-turn history, and media (images, audio, video). The synthesizer node dynamically routes media assets, utilizing direct byte injection for small files ($\le$ 4MB) and the Google GenAI File API for larger assets (featuring automated bounded polling and guaranteed resource cleanup).
 
 ### System Topology (ASCII)
 
@@ -110,7 +110,7 @@ cp .env.example .env
 
 ### 1. Prerequisites & Host Configurations
 
-Before starting the containers, ensure you have **Docker** and **Ollama** installed on your host system.
+Before starting the containers, ensure you have **Docker** and **Ollama** installed on your host system. If running services directly on the host (outside Docker Compose), **FFmpeg** and **FFprobe** must also be installed and added to your system's PATH (these are required for chunking and analyzing incoming audio/video files).
 
 #### ⚠️ CRITICAL STEP: Bind Ollama to `0.0.0.0`
 By default, Ollama binds to `127.0.0.1`, which prevents the API container from routing queries to it. You must configure Ollama to listen on all interfaces (`0.0.0.0`) so the container network can reach it:
@@ -192,7 +192,7 @@ Ingestion is fully integrated into the Streamlit user interface sidebar. You do 
 2. Expand the sidebar panel.
 3. Upload files using the secure drag-and-drop area. The ingestion pipeline natively supports:
    - **Text & Markdown documents**: `.txt`, `.md`
-   - **Multimodal files**: Images (`.png`, `.jpg`, `.jpeg`, `.webp`), audio (`.mp3`, `.wav`), and video (`.mp4`)
+   - **Multimodal files**: Images (`.png`, `.jpg`, `.jpeg`, `.webp`), audio (`.mp3`, `.wav`), and video (`.mp4`, `.mov`, `.mpeg`)
 4. Choose the ingestion mode:
    - **Append**: Adds the new document vectors and indices to the existing database.
    - **Overwrite**: Purges existing vector collections and local sparse indices before indexing the new files.
@@ -220,3 +220,22 @@ To run the suite locally:
 ```bash
 pytest tests/
 ```
+
+---
+
+## 🆕 Version 1.1.0 Changelog (Omnimodal Upgrade & Hardening)
+
+### 🎙️ Omnimodal Ingestion & Processing
+- **Format Extension**: Native support for video files (`.mp4`, `.mov`, `.mpeg`) and audio files (`.mp3`, `.wav`).
+- **Secure File Ingestion**: Injected 8-character UUIDs into persistent filenames to prevent file name collisions and accidental media overwrites.
+- **Dynamic Media Routing**: Optimized synthesizer node to route media assets dynamically:
+  - **Direct Byte Injection**: Files $\le$ 4MB (images) are sent inline via `types.Part.from_bytes` for speed.
+  - **Cloud File API**: Files > 4MB (and all audio/video segments) utilize the Google GenAI File API (`client.files.upload`) with bounded polling.
+
+### 🛡️ Production & SRE Hardening
+- **Bounded Polling (TV-1)**: Eliminated polling deadlocks by wrapping the File API state check in a bounded loop with a 120-second timeout ceiling, detecting terminal `FAILED` status, and preventing thread exhaustion.
+- **FFmpeg Zombie Cleanup (TV-2)**: Encapsulated FFmpeg segmentation in custom `Popen` blocks using process-group isolation (`CREATE_NEW_PROCESS_GROUP` on Windows and `start_new_session=True` on Linux) with a 300s timeout. If timed out, the entire process group is forcefully reaped.
+- **Zero-Leak Remote Storage (TV-3)**: Implemented a strict `try...finally` resource manager that guarantees the execution of `client.files.delete()` for all uploaded Google File API objects, ensuring customer data privacy and preventing API quota exhaustion.
+- **Strict Token Budgeting (TV-4)**: Overhauled token estimation logic using `ffprobe` with a 10s timeout, falling back on conservative high-end byte-size heuristics (~18,000 tokens/MB for video and ~3,840 tokens/MB for audio) to safely skip files exceeding context thresholds instead of triggering `400 INVALID_ARGUMENT` crashes.
+- **Album Art Muxing Crash Fix**: Enforced `-vn -map 0:a` parameters in FFmpeg to strip image metadata (e.g., album art) from audio files, bypassing a known muxing crash.
+- **Timeout Adaptations**: Streamlit timeout threshold extended to 300 seconds for ingestion and 120 seconds for chat, permitting handling of large media.

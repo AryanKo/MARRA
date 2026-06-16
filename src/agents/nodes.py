@@ -21,6 +21,10 @@ MAX_MEDIA_BYTES_PER_FILE = 4 * 1024 * 1024   # 4MB per media file
 MAX_TOTAL_MEDIA_BYTES = 15 * 1024 * 1024     # 15MB total media budget
 MAX_PLANNER_HISTORY_TURNS = 10     # Planner gets fewer turns (local model)
 
+# --- File API Polling Safety ---
+MAX_FILE_POLL_SECONDS = 120        # Hard ceiling for File API polling
+FILE_POLL_INTERVAL = 2             # Seconds between polls
+
 def estimate_token_count(text: str) -> int:
     """Fast heuristic: ~4 chars per token for English text."""
     return max(1, len(text) // 4)
@@ -46,25 +50,66 @@ def truncate_history(history: list, max_turns: int, max_tokens: int) -> list:
 
     return truncated
 
+def estimate_media_tokens(file_path: str, media_type: str, file_size: int) -> int:
+    """
+    Estimates tokens for audio and video files.
+    Primary: ffprobe duration extraction (accurate).
+    Fallback: Conservative over-estimate to prevent context overflow.
+    """
+    if media_type == "image":
+        return 258
+        
+    try:
+        import subprocess
+        import json
+        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", file_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            raise RuntimeError(f"ffprobe exited with code {result.returncode}")
+        duration = float(json.loads(result.stdout)["format"]["duration"])
+        if media_type == "video":
+            return int(duration * 300)
+        else:
+            return int(duration * 32)
+    except Exception:
+        # FALLBACK: ffprobe failed — use a conservative OVER-estimate.
+        # Over-estimating causes files to be skipped by budget_media_files() (safe).
+        # Under-estimating causes 400 INVALID_ARGUMENT crashes (unsafe).
+        size_in_mb = file_size / (1024 * 1024)
+        if media_type == "video":
+            estimated = int(size_in_mb * 18_000)
+        else:
+            estimated = int(size_in_mb * 3_840)
+        logging.warning(
+            f"ffprobe failed for {file_path}. Using conservative fallback estimate: "
+            f"{estimated} tokens for {size_in_mb:.1f}MB {media_type}. "
+            f"This file may be skipped by budget checks. Install ffmpeg to fix."
+        )
+        return estimated
+
 def budget_media_files(docs: list) -> list:
     """
-    Enforces per-file and total media byte budgets.
+    Enforces per-file and total media token budgets.
     Returns a filtered list of (doc, file_path, file_size) tuples that fit the budget.
     """
     approved = []
     total_bytes = 0
+    total_media_tokens = 0
     for doc in docs:
         file_path = doc.metadata.get("file_path")
+        media_type = doc.metadata.get("media_type", "image")
         if not file_path or not os.path.exists(file_path):
             continue
+            
         file_size = os.path.getsize(file_path)
-        if file_size > MAX_MEDIA_BYTES_PER_FILE:
-            logging.warning(f"Media file {file_path} exceeds per-file budget ({file_size} > {MAX_MEDIA_BYTES_PER_FILE}). Skipping.")
-            continue
-        if total_bytes + file_size > MAX_TOTAL_MEDIA_BYTES:
-            logging.warning(f"Total media budget exceeded. Skipping {file_path}.")
+        estimated_tokens = estimate_media_tokens(file_path, media_type, file_size)
+        
+        if total_media_tokens + estimated_tokens > (GEMINI_CONTEXT_BUDGET - MAX_HISTORY_TOKENS - RESERVED_SYSTEM_TOKENS):
+            logging.warning(f"Media token budget exceeded. Skipping {file_path}.")
             break
+            
         total_bytes += file_size
+        total_media_tokens += estimated_tokens
         approved.append((doc, file_path, file_size))
     return approved
 
@@ -174,6 +219,7 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
     history = truncate_history(history, MAX_HISTORY_TURNS, MAX_HISTORY_TOKENS)
     
     contents = []
+    _remote_files = []  # Track remote file handles for guaranteed cleanup (TV-3)
     
     # 1. Inject Conversational History
     if history:
@@ -195,9 +241,6 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
     for doc, file_path, file_size in approved_media:
         media_type = doc.metadata.get("media_type")
         try:
-            with open(file_path, "rb") as f:
-                media_bytes = f.read()
-                
             mime_type = "image/jpeg"
             if media_type == "image":
                 if file_path.endswith(".png"): mime_type = "image/png"
@@ -207,9 +250,52 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
                 elif file_path.endswith(".wav"): mime_type = "audio/wav"
             elif media_type == "video":
                 if file_path.endswith(".mp4"): mime_type = "video/mp4"
+                elif file_path.endswith(".mov"): mime_type = "video/quicktime"
+                elif file_path.endswith(".mpeg"): mime_type = "video/mpeg"
                 
-            # Inject direct raw bytes into the payload so Gemini can 'see' or 'hear' it natively
-            contents.append(types.Part.from_bytes(data=media_bytes, mime_type=mime_type))
+            if media_type == "image" and file_size <= 4 * 1024 * 1024:
+                with open(file_path, "rb") as f:
+                    media_bytes = f.read()
+                # Inject direct raw bytes into the payload so Gemini can 'see' natively
+                contents.append(types.Part.from_bytes(data=media_bytes, mime_type=mime_type))
+            else:
+                import time
+                api_key = os.environ.get("GEMINI_API_KEY")
+                client = genai.Client(api_key=api_key)
+                uploaded_file = client.files.upload(file=file_path)
+                _remote_files.append((client, uploaded_file.name))
+
+                # Bounded polling with FAILED-state detection (TV-1)
+                elapsed = 0
+                while uploaded_file.state.name == "PROCESSING":
+                    if elapsed >= MAX_FILE_POLL_SECONDS:
+                        try:
+                            client.files.delete(name=uploaded_file.name)
+                        except Exception:
+                            pass
+                        raise TimeoutError(
+                            f"Google File API polling timed out after {MAX_FILE_POLL_SECONDS}s "
+                            f"for file '{uploaded_file.name}'. State stuck at PROCESSING."
+                        )
+                    time.sleep(FILE_POLL_INTERVAL)
+                    elapsed += FILE_POLL_INTERVAL
+                    uploaded_file = client.files.get(name=uploaded_file.name)
+                    logging.info(
+                        f"File API poll: {uploaded_file.name} -> {uploaded_file.state.name} "
+                        f"({elapsed}/{MAX_FILE_POLL_SECONDS}s)"
+                    )
+
+                if uploaded_file.state.name == "FAILED":
+                    try:
+                        client.files.delete(name=uploaded_file.name)
+                    except Exception:
+                        pass
+                    raise RuntimeError(
+                        f"Google File API processing FAILED for '{uploaded_file.name}'. "
+                        f"The file may be corrupted or use an unsupported codec."
+                    )
+
+                contents.append(uploaded_file)
         except Exception as e:
             logging.warning(f"Failed to load media chunk {file_path}: {e}")
                     
@@ -236,3 +322,14 @@ User Query: {query}
     except Exception as e:
         logging.error(f"Synthesizer node failed: {e}")
         return {"final_answer": "Error: Unable to synthesize answer via Gemini Cloud."}
+    finally:
+        # CRITICAL (TV-3): Purge all remote files regardless of success/failure
+        for client, file_name in _remote_files:
+            try:
+                client.files.delete(name=file_name)
+                logging.info(f"Cleaned up remote file: {file_name}")
+            except Exception as cleanup_err:
+                logging.error(
+                    f"REMOTE CLEANUP FAILED for {file_name}: {cleanup_err}. "
+                    f"File will persist in Google Cloud for up to 48 hours."
+                )

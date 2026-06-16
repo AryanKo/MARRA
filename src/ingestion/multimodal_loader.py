@@ -1,8 +1,14 @@
 import os
 import subprocess
 import glob
+import signal
+import sys
 from typing import List
 from src.models.schema import DocumentChunk
+
+# --- Subprocess Safety Constants ---
+FFMPEG_TIMEOUT_SECONDS = 300    # 5 min hard ceiling for segment splitting
+FFPROBE_TIMEOUT_SECONDS = 10   # ffprobe should complete in < 1 second
 
 def chunk_multimodal_file(file_path: str) -> List[DocumentChunk]:
     ext = os.path.splitext(file_path)[1].lower()
@@ -18,13 +24,13 @@ def chunk_multimodal_file(file_path: str) -> List[DocumentChunk]:
                 "end_timestamp": 0
             }
         ))
-    elif ext in [".mp3", ".wav", ".mp4"]:
-        media_type = "video" if ext == ".mp4" else "audio"
+    elif ext in [".mp3", ".wav", ".mp4", ".mov", ".mpeg"]:
+        media_type = "video" if ext in [".mp4", ".mov", ".mpeg"] else "audio"
         
         # Get duration using ffprobe
         import json
         cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", file_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT_SECONDS)
         try:
             duration = float(json.loads(result.stdout)["format"]["duration"])
         except Exception:
@@ -37,15 +43,45 @@ def chunk_multimodal_file(file_path: str) -> List[DocumentChunk]:
         base_name = f"{uuid.uuid4().hex}"
         output_pattern = os.path.join(temp_dir, f"{base_name}_%03d{ext}")
         
-        split_cmd = [
-            "ffmpeg", "-i", file_path,
-            "-f", "segment", "-segment_time", "30",
-            "-c", "copy", "-reset_timestamps", "1",
-            "-map", "0", output_pattern
-        ]
+        if media_type == "audio":
+            split_cmd = [
+                "ffmpeg", "-i", file_path,
+                "-f", "segment", "-segment_time", "30",
+                "-map", "0:a", "-vn", output_pattern
+            ]
+        else:
+            split_cmd = [
+                "ffmpeg", "-i", file_path,
+                "-f", "segment", "-segment_time", "30",
+                "-c", "copy", "-reset_timestamps", "1",
+                "-map", "0", output_pattern
+            ]
         
         try:
-            subprocess.run(split_cmd, capture_output=True, check=True)
+            # Start FFmpeg in a new process group so we can kill the entire tree on timeout.
+            popen_kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+            if sys.platform != "win32":
+                popen_kwargs["start_new_session"] = True
+            else:
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+            proc = subprocess.Popen(split_cmd, **popen_kwargs)
+            try:
+                stdout, stderr = proc.communicate(timeout=FFMPEG_TIMEOUT_SECONDS)
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(
+                        proc.returncode, split_cmd, stdout, stderr
+                    )
+            except subprocess.TimeoutExpired:
+                # Kill the entire process group to prevent orphaned ffmpeg workers
+                if sys.platform != "win32":
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
+                proc.wait()  # Reap the zombie
+                raise RuntimeError(
+                    f"FFmpeg timed out after {FFMPEG_TIMEOUT_SECONDS}s processing {file_path}"
+                )
             
             pattern = os.path.join(temp_dir, f"{base_name}_*{ext}")
             segments = sorted(glob.glob(pattern))
@@ -54,7 +90,7 @@ def chunk_multimodal_file(file_path: str) -> List[DocumentChunk]:
                 start_ts = i * 30.0
                 end_ts = min((i + 1) * 30.0, duration)
                 chunks.append(DocumentChunk(
-                    text=f"[{media_type.upper()} MEDIA PAYLOAD: {os.path.basename(file_path)} segment {i}]",
+                    text=f"[{media_type.upper()} MEDIA PAYLOAD - {base_name}]",
                     metadata={
                         "file_path": seg_path,
                         "media_type": media_type,

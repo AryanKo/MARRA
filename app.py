@@ -107,7 +107,7 @@ with st.sidebar:
         
     st.markdown("---")
     st.markdown("### Document Ingestion")
-    uploaded_file = st.file_uploader("Upload Document or Media File", type=["txt", "md", "png", "jpg", "jpeg", "webp", "mp3", "wav", "mp4"])
+    uploaded_file = st.file_uploader("Upload Document or Media File", type=["txt", "md", "png", "jpg", "jpeg", "webp", "mp3", "wav", "mp4", "mov", "mpeg"])
     ingest_mode = st.radio("Ingestion Mode", ["Append", "Overwrite"], index=0)
     
     if st.button("🚀 Ingest Document", use_container_width=True):
@@ -117,7 +117,7 @@ with st.sidebar:
                 try:
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type or "text/plain")}
                     data = {"overwrite": str(overwrite_val).lower()}
-                    response = requests.post(f"{API_URL}/ingest", files=files, data=data, timeout=120.0)
+                    response = requests.post(f"{API_URL}/ingest", files=files, data=data, timeout=300.0)
                     if response.status_code == 200:
                         st.success(response.json().get("message", "Success!"))
                     else:
@@ -196,7 +196,7 @@ if user_query := st.chat_input("Ask MARRA a question..."):
     
     with st.spinner("Synthesizing research..."):
         try:
-            response = requests.post(f"{API_URL}/chat", json=payload, timeout=60.0)
+            response = requests.post(f"{API_URL}/chat", json=payload, timeout=120.0)
             
             if response.status_code == 200:
                 data = response.json()

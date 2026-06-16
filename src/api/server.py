@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     setup_observability(app)
     yield
 
-app = FastAPI(title="MARRA Reasoning Engine API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="MARRA Reasoning Engine API", version="1.1.0", lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():
@@ -136,7 +136,7 @@ async def ingest_endpoint(file: UploadFile = File(...), overwrite: bool = Form(F
         # 3. Handle chunking and embedding based on file type
         document_chunks = []
         ext = os.path.splitext(filename)[1].lower()
-        is_media = ext in [".jpg", ".jpeg", ".png", ".webp", ".mp3", ".wav", ".mp4"]
+        is_media = ext in [".jpg", ".jpeg", ".png", ".webp", ".mp3", ".wav", ".mp4", ".mov", ".mpeg"]
         
         try:
             if is_media:
