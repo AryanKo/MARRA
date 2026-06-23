@@ -27,12 +27,14 @@ def test_agent_state():
         "query": "What is AI?",
         "sub_queries": ["definition of AI"],
         "retrieved_docs": [DocumentChunk(text="AI is artificial intelligence.")],
-        "final_answer": "AI stands for artificial intelligence."
+        "final_answer": "AI stands for artificial intelligence.",
+        "media_filter": "all"
     }
     assert state["query"] == "What is AI?"
     assert len(state["sub_queries"]) == 1
     assert len(state["retrieved_docs"]) == 1
     assert state["final_answer"] == "AI stands for artificial intelligence."
+    assert state["media_filter"] == "all"
 
 def test_app_error():
     error = AppError("Something went wrong")

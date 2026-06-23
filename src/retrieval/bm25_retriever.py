@@ -44,15 +44,27 @@ class BM25Retriever:
             logging.error(f"Error reloading BM25 index: {e}")
             
     @span(name="bm25_sparse_search")
-    def search(self, query: str, k: int = 3):
+    def search(self, query: str, k: int = 3, media_filter: str = "all"):
         with self._lock:
             model = self.bm25_model
             chunks = self.chunks
         if not model or not chunks:
             return []
             
+        if media_filter and media_filter != "all":
+            filtered_chunks = [c for c in chunks if c.metadata.get("media_type") == media_filter]
+            if not filtered_chunks:
+                return []
+            from rank_bm25 import BM25Okapi
+            tokenized_corpus = [c.text.lower().split(" ") for c in filtered_chunks]
+            search_model = BM25Okapi(tokenized_corpus)
+            search_chunks = filtered_chunks
+        else:
+            search_model = model
+            search_chunks = chunks
+            
         tokenized_query = query.lower().split(" ")
-        scores = model.get_scores(tokenized_query)
+        scores = search_model.get_scores(tokenized_query)
         
         # Get top k indices
         top_k_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
@@ -61,5 +73,5 @@ class BM25Retriever:
         for i in top_k_indices:
             score = scores[i]
             if score > 0:
-                results.append((chunks[i], score))
+                results.append((search_chunks[i], score))
         return results

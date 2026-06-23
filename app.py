@@ -84,7 +84,51 @@ st.markdown("""
             color: #e0e0e0;
         }
     }
+    
+    /* File Type Badge Styling */
+    .file-type-container {
+        background-color: var(--secondary-background-color);
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+    .file-type-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-color);
+        opacity: 0.85;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .file-badge-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+    .file-badge-list:last-child {
+        margin-bottom: 0;
+    }
+    .file-badge {
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.7rem;
+        background-color: rgba(128, 128, 128, 0.1);
+        color: var(--text-color);
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(128, 128, 128, 0.15);
+        font-weight: bold;
+    }
+    
+    /* Hide default file uploader info text to avoid double info and compression */
+    [data-testid="stFileUploader"] small {
+        display: none !important;
+    }
 </style>
+
 """, unsafe_allow_html=True)
 
 # App Sidebar
@@ -107,7 +151,40 @@ with st.sidebar:
         
     st.markdown("---")
     st.markdown("### Document Ingestion")
-    uploaded_file = st.file_uploader("Upload Document or Media File", type=["txt", "md", "png", "jpg", "jpeg", "webp", "mp3", "wav", "mp4", "mov", "mpeg"])
+    
+    # Clearly show the accepted file types, grouped by category
+    st.markdown("""
+    <div class="file-type-container">
+        <div style="font-size: 0.8rem; font-weight: 700; margin-bottom: 8px; color: var(--text-color);">
+            Supported Formats (Max 200MB)
+        </div>
+        <div class="file-type-label">📄 Documents</div>
+        <div class="file-badge-list">
+            <span class="file-badge">TXT</span>
+            <span class="file-badge">MD</span>
+        </div>
+        <div class="file-type-label" style="margin-top: 8px;">🖼️ Images</div>
+        <div class="file-badge-list">
+            <span class="file-badge">PNG</span>
+            <span class="file-badge">JPG</span>
+            <span class="file-badge">JPEG</span>
+            <span class="file-badge">WEBP</span>
+        </div>
+        <div class="file-type-label" style="margin-top: 8px;">🎵 Audio</div>
+        <div class="file-badge-list">
+            <span class="file-badge">MP3</span>
+            <span class="file-badge">WAV</span>
+        </div>
+        <div class="file-type-label" style="margin-top: 8px;">🎥 Video</div>
+        <div class="file-badge-list">
+            <span class="file-badge">MP4</span>
+            <span class="file-badge">MOV</span>
+            <span class="file-badge">MPEG</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Upload Document or Media File")
     ingest_mode = st.radio("Ingestion Mode", ["Append", "Overwrite"], index=0)
     
     if st.button("🚀 Ingest Document", use_container_width=True):

@@ -2,18 +2,26 @@
 # MARRA V1 — .gitignore
 # ============================================================
 
-# V1 Security & Data Exclusions
+# Environment & Secrets (NEVER commit)
 .env
+.env.*
+*.env.local
+
+# Local Storage & Vector Database
 qdrant_data/
-data/
-__pycache__/
-*.pyc
-*.tmp
+qdrant_storage/
+
+# Runtime Data Caches & States
+data/*
+!data/.gitkeep
+!data/sample.txt
 
 # --- Python ---
+__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.pyc
 *.so
 *.egg
 *.egg-info/
@@ -21,14 +29,12 @@ dist/
 build/
 .eggs/
 *.whl
+*.tmp
 
 # --- Virtual Environments ---
 venv/
 env/
 .venv/
-
-# --- Environment & Secrets (NEVER commit) ---
-*.env.local
 
 # --- IDE & Editor ---
 .idea/
@@ -53,3 +59,7 @@ project-rules.md
 project-blueprint.md
 project-blueprint.MD
 
+# --- Local Temp Files ---
+dummy.pdf
+req_local*.txt
+*.pkl

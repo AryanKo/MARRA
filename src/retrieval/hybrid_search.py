@@ -63,7 +63,7 @@ def reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60):
         
     return fused_results
 
-def hybrid_search(query: str, query_media_path: str = None, k: int = 3):
+def hybrid_search(query: str, query_media_path: str = None, k: int = 3, media_filter: str = "all"):
     is_multimodal_query = query_media_path is not None or query.strip() in ["[IMAGE MEDIA PAYLOAD]", "[AUDIO MEDIA PAYLOAD]", "[VIDEO MEDIA PAYLOAD]"]
     
     # 1. Embed query
@@ -75,16 +75,19 @@ def hybrid_search(query: str, query_media_path: str = None, k: int = 3):
         
     # 2. Dense search
     vector_store = VectorStore(collection_name="marra_multimodal_768")
-    dense_results = vector_store.dense_search(query_vector, k=k)
+    dense_results = vector_store.dense_search(query_vector, k=k, media_filter=media_filter)
     
     # 3. Sparse search
     if is_multimodal_query:
         sparse_results = []
     else:
         bm25_retriever = BM25Retriever()
-        sparse_results = bm25_retriever.search(query, k=k)
+        sparse_results = bm25_retriever.search(query, k=k, media_filter=media_filter)
         # Filter out media chunks from sparse results
-        sparse_results = [(c, s) for c, s in sparse_results if c.metadata.get("media_type", "text") == "text"]
+        if media_filter == "all":
+            sparse_results = [(c, s) for c, s in sparse_results if c.metadata.get("media_type", "text") == "text"]
+        else:
+            sparse_results = [(c, s) for c, s in sparse_results if c.metadata.get("media_type") == media_filter]
         
     # 4. Reciprocal Rank Fusion
     fused_results = reciprocal_rank_fusion(dense_results, sparse_results, k_constant=60)

@@ -68,7 +68,8 @@ async def chat_endpoint(request: ChatRequest):
             "history": request.history,
             "sub_queries": [],
             "retrieved_docs": [],
-            "final_answer": ""
+            "final_answer": "",
+            "media_filter": "all"
         }
         
         # Run graph.invoke in a separate thread to keep the FastAPI event loop responsive

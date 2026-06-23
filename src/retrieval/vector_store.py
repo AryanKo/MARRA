@@ -45,6 +45,7 @@ class VectorStore:
                     vector=chunk.dense_vector,
                     payload={
                         "text": chunk.text,
+                        "metadata": chunk.metadata,
                         **chunk.metadata
                     }
                 )
@@ -57,10 +58,22 @@ class VectorStore:
             )
 
     @span(name="qdrant_dense_search")
-    def dense_search(self, query_vector: list[float], k: int = 3):
+    def dense_search(self, query_vector: list[float], k: int = 3, media_filter: str = "all"):
+        from qdrant_client import models
+        qdrant_filter = None
+        if media_filter and media_filter != "all":
+            qdrant_filter = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="metadata.media_type",
+                        match=models.MatchValue(value=media_filter)
+                    )
+                ]
+            )
         search_result = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
+            query_filter=qdrant_filter,
             limit=k
         ).points
         return search_result

@@ -239,3 +239,18 @@ pytest tests/
 - **Strict Token Budgeting (TV-4)**: Overhauled token estimation logic using `ffprobe` with a 10s timeout, falling back on conservative high-end byte-size heuristics (~18,000 tokens/MB for video and ~3,840 tokens/MB for audio) to safely skip files exceeding context thresholds instead of triggering `400 INVALID_ARGUMENT` crashes.
 - **Album Art Muxing Crash Fix**: Enforced `-vn -map 0:a` parameters in FFmpeg to strip image metadata (e.g., album art) from audio files, bypassing a known muxing crash.
 - **Timeout Adaptations**: Streamlit timeout threshold extended to 300 seconds for ingestion and 120 seconds for chat, permitting handling of large media.
+
+---
+
+## 🆕 Version 2.0.0 Changelog (V2 Metadata Filtering & Repository Hygiene)
+
+### 🎯 V2 Metadata Filtering (Operational)
+- **Targeted Multimodal Routing**: Metadata filtering is now fully operational within the hybrid search layer. The LangGraph planner node autonomously classifies user queries to target specific media modalities (`video`, `audio`, `image`, `text`, or `all`).
+- **Dense Vector Trimming**: The Qdrant client injects native `metadata.media_type` payload filters directly into the cosine-similarity search, aggressively trimming the search space.
+- **Sparse Reciprocal Rank Filtering**: The BM25 corpus dynamically re-indexes subsetted chunks on the fly to avoid negative IDF score suppression, ensuring hybrid Reciprocal Rank Fusion (RRF) remains unpolluted by multimodal placeholders.
+
+### 🛡️ GitHub Contribution & Local Setup
+MARRA is designed as a local-first deployment. We intentionally omit application-layer authentication (API gates/password walls) to prioritize seamless open-source contributions and local accessibility.
+1. **Environment Setup**: Copy the local-only environment template: `cp .env.example .env`. This template only tracks baseline open-source variables. **Do not add production secrets or external database keys.**
+2. **Local Repository Hygiene**: The `.gitignore` is strictly configured to prevent accidental leakage of local vector storage (`qdrant_storage/`), serialized BM25 indices (`data/`), and environment files (`.env`).
+3. **Spin Up**: Run `docker compose up -d` or the provided `run.bat` script to safely launch the isolated local services without exposing active cloud configurations.

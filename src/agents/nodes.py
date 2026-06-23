@@ -146,7 +146,19 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
     
     system_prompt = """You are an expert search planner. Analyze the user's latest query, using the conversational history for context if needed to resolve pronouns or reference.
 Break it down into 1 to 3 targeted search queries.
-You MUST output valid JSON ONLY with the exact structure: {"sub_queries": ["query1", "query2"]}.
+
+You MUST also classify the media filter type based on these strict guidelines:
+- If the query contains keywords relating to video (e.g., watch, play, clip, video, show), classify as "video".
+- If the query contains keywords relating to audio (e.g., sound, listen, hear, voice, audio, music), classify as "audio".
+- If the query contains keywords relating to images (e.g., photo, picture, image, drawing, diagram), classify as "image".
+- If the query contains keywords relating to documents/PDFs (e.g., read, text, doc, pdf, book), classify as "text".
+- If the query is ambiguous, generic, or does not specify a media format, classify as "all".
+
+You MUST output valid JSON ONLY with the exact structure:
+{
+  "sub_queries": ["query1", "query2"],
+  "media_filter": "video" | "audio" | "image" | "text" | "all"
+}
 Do not output markdown, explanations, or any other text.
 """
     if history:
@@ -175,17 +187,22 @@ Do not output markdown, explanations, or any other text.
         if query not in sub_queries:
             sub_queries.append(query)
             
-        return {"sub_queries": sub_queries}
+        media_filter = data.get("media_filter", "all")
+        if media_filter not in ["video", "audio", "image", "text", "all"]:
+            media_filter = "all"
+            
+        return {"sub_queries": sub_queries, "media_filter": media_filter}
     except ConnectionError as e:
         raise e
     except Exception as e:
         logging.error(f"Planner node failed: {e}")
-        return {"sub_queries": [query]}
+        return {"sub_queries": [query], "media_filter": "all"}
 
 
 
 def retriever_node(state: AgentState) -> Dict[str, Any]:
     sub_queries = state.get("sub_queries", [])
+    media_filter = state.get("media_filter", "all")
     
     existing_docs = state.get("retrieved_docs", [])
     seen_texts = {d.text for d in existing_docs}
@@ -193,7 +210,7 @@ def retriever_node(state: AgentState) -> Dict[str, Any]:
     
     for sq in sub_queries:
         try:
-            results = hybrid_search(sq, k=3)
+            results = hybrid_search(sq, k=3, media_filter=media_filter)
             
             for res in results:
                 text = res["text"]
