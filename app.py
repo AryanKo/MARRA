@@ -185,16 +185,13 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader("Upload Document or Media File")
-    ingest_mode = st.radio("Ingestion Mode", ["Append", "Overwrite"], index=0)
     
     if st.button("🚀 Ingest Document", use_container_width=True):
         if uploaded_file is not None:
-            overwrite_val = (ingest_mode == "Overwrite")
             with st.spinner("Ingesting document..."):
                 try:
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type or "text/plain")}
-                    data = {"overwrite": str(overwrite_val).lower()}
-                    response = requests.post(f"{API_URL}/ingest", files=files, data=data, timeout=300.0)
+                    response = requests.post(f"{API_URL}/ingest", files=files, timeout=300.0)
                     if response.status_code == 200:
                         st.success(response.json().get("message", "Success!"))
                     else:
@@ -208,6 +205,36 @@ with st.sidebar:
     if st.button("🧹 Clear Chat History", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+
+    st.markdown("---")
+    if st.button("🗑️ Clear Database", type="secondary", use_container_width=True):
+        with st.spinner("Wiping database..."):
+            try:
+                response = requests.delete(f"{API_URL}/clear-db", timeout=30.0)
+                if response.status_code == 200:
+                    st.session_state.messages = []
+                    st.success("Database wiped completely.")
+                    st.rerun()
+                else:
+                    st.error(f"Error ({response.status_code}): {response.text}")
+            except Exception as e:
+                st.error(f"Failed to connect to server: {e}")
+
+    st.markdown("---")
+    st.markdown("### Active Files")
+    try:
+        files_resp = requests.get(f"{API_URL}/active-files", timeout=2.0)
+        if files_resp.status_code == 200:
+            active_files = files_resp.json().get("files", [])
+            if active_files:
+                for f in active_files:
+                    st.markdown(f"- {f}")
+            else:
+                st.markdown("_No files in database._")
+        else:
+            st.markdown("_Unable to fetch active files._")
+    except Exception:
+        st.markdown("_Unable to connect to server._")
 
 # Main Header Design
 st.markdown("""

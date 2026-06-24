@@ -60,3 +60,13 @@ class BM25Indexer:
             raise
         
         logger.info(f"BM25 index saved to {self.index_path} with {len(combined_chunks)} total chunks")
+
+    def clear_index(self):
+        """Deletes the BM25 index file if it exists."""
+        if os.path.exists(self.index_path):
+            try:
+                os.remove(self.index_path)
+                logger.info(f"Deleted BM25 index at {self.index_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete BM25 index at {self.index_path}: {e}")
+

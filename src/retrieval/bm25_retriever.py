@@ -33,6 +33,9 @@ class BM25Retriever:
     def reload(self):
         """Thread-safe reload: load into temporaries, then swap under lock."""
         if not os.path.exists(self.index_path):
+            with self._lock:
+                self.bm25_model = None
+                self.chunks = []
             return
         try:
             with open(self.index_path, "rb") as f:

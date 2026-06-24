@@ -102,27 +102,47 @@ async def chat_endpoint(request: ChatRequest):
             detail=f"Internal Server Error: {str(e)}"
         )
 
+@app.delete("/clear-db", status_code=status.HTTP_200_OK)
+async def clear_db():
+    try:
+        logger.info("Clearing Vector Collection and deleting BM25 index.")
+        # Wipe Qdrant
+        store = VectorStore(collection_name="marra_multimodal_768")
+        store.clear_collection()
+        
+        # Delete BM25 index pkl
+        bm25_indexer = BM25Indexer()
+        bm25_indexer.clear_index()
+        
+        # Reload BM25 Retriever to empty state
+        BM25Retriever().reload()
+        
+        return {"status": "success", "message": "Database wiped completely."}
+    except Exception as e:
+        logger.error(f"Failed to clear database: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear database: {str(e)}"
+        )
+
+@app.get("/active-files")
+async def get_active_files():
+    try:
+        retriever = BM25Retriever()
+        files = set()
+        for chunk in retriever.chunks:
+            if "file_name" in chunk.metadata:
+                files.add(chunk.metadata["file_name"])
+        return {"files": list(files)}
+    except Exception as e:
+        logger.error(f"Failed to get active files: {e}", exc_info=True)
+        return {"files": []}
+
 @app.post("/ingest", status_code=status.HTTP_200_OK)
-async def ingest_endpoint(file: UploadFile = File(...), overwrite: bool = Form(False)):
+async def ingest_endpoint(file: UploadFile = File(...)):
     try:
         filename = file.filename
-        logger.info(f"Received ingestion request for file: {filename}, overwrite={overwrite}")
-        
-        # 1. Handle overwrite
-        if overwrite:
-            logger.info("Overwrite is True. Clearing Vector Collection and deleting BM25 index.")
-            # Wipe Qdrant
-            store = VectorStore(collection_name="marra_multimodal_768")
-            store.clear_collection()
-            
-            # Delete BM25 index pkl
-            bm25_path = "data/bm25_index.pkl"
-            if os.path.exists(bm25_path):
-                try:
-                    os.remove(bm25_path)
-                    logger.info(f"Successfully deleted BM25 index at {bm25_path}")
-                except Exception as e:
-                    logger.error(f"Failed to delete BM25 index file: {e}")
+        logger.info(f"Received ingestion request for file: {filename}, append mode")
         
         # 2. Save file temporarily
         import uuid
@@ -210,12 +230,12 @@ async def ingest_endpoint(file: UploadFile = File(...), overwrite: bool = Form(F
                 logger.warning(f"Failed to delete temp file {file_path}: {e}")
         
         # 7. Build and save BM25 index (only for text chunks)
-        logger.info(f"Updating BM25 index (append={not overwrite})...")
+        logger.info(f"Updating BM25 index (append=True)...")
         text_chunks = [c for c in document_chunks if c.metadata.get("media_type", "text") == "text"]
-        if text_chunks or overwrite:
+        if text_chunks:
             async with _bm25_write_lock:
                 bm25_indexer = BM25Indexer()
-                await anyio.to_thread.run_sync(bm25_indexer.build_and_save_index, text_chunks, not overwrite)
+                await anyio.to_thread.run_sync(bm25_indexer.build_and_save_index, text_chunks, True)
         
         # 8. Reload BM25 Retriever
         logger.info("Reloading BM25 Retriever in-memory index...")
