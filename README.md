@@ -187,16 +187,16 @@ docker compose down
 
 Ingestion is fully integrated into the Streamlit user interface sidebar. You do not need to run separate command-line scripts to ingest content.
 
-#### How to Ingest Documents:
+#### How to Ingest Documents & Manage State:
 1. Open the Streamlit UI at [http://localhost:8501](http://localhost:8501).
 2. Expand the sidebar panel.
 3. Upload files using the secure drag-and-drop area. The ingestion pipeline natively supports:
    - **Text & Markdown documents**: `.txt`, `.md`
    - **Multimodal files**: Images (`.png`, `.jpg`, `.jpeg`, `.webp`), audio (`.mp3`, `.wav`), and video (`.mp4`, `.mov`, `.mpeg`)
-4. Choose the ingestion mode:
-   - **Append**: Adds the new document vectors and indices to the existing database.
-   - **Overwrite**: Purges existing vector collections and local sparse indices before indexing the new files.
-5. Click **🚀 Ingest Document** to start the pipeline. The file will be processed, chunked, embedded via `gemini-embedding-2`, and indexed into both Qdrant (dense vectors) and the local BM25 engine.
+4. Click **🚀 Ingest Document** to start the pipeline. The file will be processed, chunked, embedded via `gemini-embedding-2`, and indexed into both Qdrant (dense vectors) and the local BM25 engine.
+5. All document ingestion requests strictly **Append** content to the existing database to build cumulative context.
+6. Monitor what documents are currently loaded using the **Active Files** list displayed in the sidebar.
+7. Click **🗑️ Clear Database** in the sidebar to wipe both Qdrant and the BM25 sparse index, purging all stored files for a clean restart.
 
 ---
 
@@ -248,6 +248,7 @@ pytest tests/
 - **Targeted Multimodal Routing**: Metadata filtering is now fully operational within the hybrid search layer. The LangGraph planner node autonomously classifies user queries to target specific media modalities (`video`, `audio`, `image`, `text`, or `all`).
 - **Dense Vector Trimming**: The Qdrant client injects native `metadata.media_type` payload filters directly into the cosine-similarity search, aggressively trimming the search space.
 - **Sparse Reciprocal Rank Filtering**: The BM25 corpus dynamically re-indexes subsetted chunks on the fly to avoid negative IDF score suppression, ensuring hybrid Reciprocal Rank Fusion (RRF) remains unpolluted by multimodal placeholders.
+- **Ingestion & DB Management Refactor**: Removed the "Overwrite vs. Append" toggle, ensuring all uploads strictly append. Introduced a global "Clear Database" route and button to completely wipe all indices, alongside a live "Active Files" panel in the Streamlit sidebar.
 
 ### 🛡️ GitHub Contribution & Local Setup
 MARRA is designed as a local-first deployment. We intentionally omit application-layer authentication (API gates/password walls) to prioritize seamless open-source contributions and local accessibility.
