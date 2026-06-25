@@ -1,6 +1,6 @@
 # 🧠 MARRA: Hybrid Multi-Agent RAG Platform
 
-![Version](https://img.shields.io/badge/version-v1.1.0-blue) ![Python](https://img.shields.io/badge/python-3.11-green) ![License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-v2.0-blue) ![Python](https://img.shields.io/badge/python-3.11-green) ![License](https://img.shields.io/badge/license-MIT-green)
 
 MARRA (Multi-Agent Retrieval Reasoning Assistant) is a production-grade, local-first RAG platform designed to deliver secure, private, and deterministic document intelligence. It features a decoupled microservices architecture, a deterministic agent state machine orchestrated with LangGraph, hybrid search (dense vector + sparse BM25) utilizing Reciprocal Rank Fusion (RRF), and comprehensive OTLP-compliant observability.
 
